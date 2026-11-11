@@ -78,7 +78,7 @@ These user scenarios rely on three question types (`boolean`, `choice`, and `sco
 ## Potential Solution
 
 We are exploring a three-step workflow on `window.DecisionModel`:
-1. **Define a schema** with context and one or more questions (`boolean`, `choice`, or `score`, with required `options` for `choice` and optional `options` for `score` defaulting to `"1"`–`"5"`), check readiness with `DecisionModel.availability(schema)`, and create a session via `DecisionModel.create(schema)`.
+1. **Define a schema** with one or more questions (`boolean`, `choice`, or `score`, with required `options` for `choice` and optional `options` for `score` defaulting to `"1"`–`"5"`), check readiness with `DecisionModel.availability(schema)`, and create a session via `DecisionModel.create(schema)`.
 2. **Pass the input** (such as text or page state) to `model.decide(input)`.
 3. **Receive a structured result** keyed by question `id`, containing the winning `label`, option `probabilities` (keyed by option `label`), `confidence`, and `expectedScore` (populated on `score` decisions, weighted by parsed numeric option `label`s when all labels in the question are finite numbers, or `1..N` ordinal indices otherwise).
 
@@ -91,7 +91,6 @@ A hotel reservation or trip booking site can convert a user's natural-language s
 ```js
 // 1. Define the filter schema for a hotel search UI
 const schema = {
-  context: "Hotel reservation search filter converter.",
   expectedInputs: [{ type: "text", languages: ["en"] }],
   questions: [
     {
@@ -175,7 +174,6 @@ An application command palette can match a user's everyday phrasing to available
 
 ```js
 const actionMatcher = await DecisionModel.create({
-  context: "Document editor command palette",
   questions: [
     {
       id: "command",
@@ -200,7 +198,6 @@ A bug tracker or forum form can check a user's draft locally as they type, nudgi
 
 ```js
 const draftChecker = await DecisionModel.create({
-  context: "Bug report submission form pre-check",
   questions: [
     {
       id: "has_repro_steps",
@@ -229,7 +226,6 @@ A form assistant or password manager extension can evaluate the text surrounding
 
 ```js
 const fieldClassifier = await DecisionModel.create({
-  context: "Form assistant classifying a non-standard input field from surrounding DOM labels",
   questions: [
     {
       id: "field_purpose",
