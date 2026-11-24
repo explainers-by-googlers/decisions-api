@@ -73,14 +73,14 @@ These user scenarios rely on three question types (`boolean`, `choice`, and `sco
 | :--- | :--- | :--- | :--- |
 | **Verification & Detection** | `boolean` | Check whether input satisfies binary policy rules, adequacy criteria, or risk checks (`"true"` / `"false"`). | Verifying a draft or AI response meets guidelines; flagging toxicity, spam, or accidental PII; checking if a policy condition is met. |
 | **Classification & Routing** | `choice` | Assign content to categorical options, route user intent to workflows or tools, or extract discrete fields. | Converting search text into predefined trip or catalog filters; routing a request to `billing` or `returns`; classifying form fields for password or address autofill. |
-| **Scoring & Ranking** | `score` | Rate degree or intensity along an ordered rubric to evaluate or rank items (`options` is optional and defaults to `"1"`–`"5"`). | Scoring customer tone (`calm` to `angry`) or incident severity (`cosmetic` to `critical`); rating response helpfulness (`1`–`5`); ranking candidate results. |
+| **Scoring & Ranking** | `score` | Rate degree or intensity along `2`–`10` ordered `options` (`0` to `L - 1`, lowest to highest) to evaluate or rank items. | Scoring customer tone (`calm` to `angry`) or incident severity (`cosmetic` to `critical`); rating response helpfulness (`0`–`4`); ranking candidate results. |
 
 ## Potential Solution
 
 We are exploring a three-step workflow on `window.DecisionModel`:
-1. **Define a schema** with one or more questions (`boolean`, `choice`, or `score`, with required `options` for `choice` and optional `options` for `score` defaulting to `"1"`–`"5"`), check readiness with `DecisionModel.availability(schema)`, and create a session via `DecisionModel.create(schema)`.
+1. **Define a schema** with one or more questions (`boolean`, `choice`, or `score`, with required `options` for `choice` and `score`), check readiness with `DecisionModel.availability(schema)`, and create a session via `DecisionModel.create(schema)`.
 2. **Pass the input** (such as text or page state) to `model.decide(input)`.
-3. **Receive a structured result** keyed by question `id`, containing the winning `label`, option `probabilities` (keyed by option `label`), `confidence`, and `expectedScore` (populated on `score` decisions, weighted by parsed numeric option `label`s when all labels in the question are finite numbers, or `1..N` ordinal indices otherwise).
+3. **Receive a structured result** keyed by question `id`, containing the winning `label`, option `probabilities` (keyed by option `label`), `confidence`, and `score` (populated only on `score` decisions as the expected `0`-based level index `0..L-1`, ordered from lowest to highest; option `label`s are display-only).
 
 ### How this solution would solve the use cases
 
@@ -112,12 +112,12 @@ const schema = {
     {
       id: "price_tier",
       type: "score",
-      prompt: "Rate the target price tier from 1 (budget) to 4 (luxury).",
+      prompt: "Rate the target price tier from 0 (budget) to 3 (luxury).",
       options: [
-        { label: "1", description: "Budget or inexpensive stay" },
-        { label: "2", description: "Moderate or mid-range price" },
-        { label: "3", description: "Upscale or premium property" },
-        { label: "4", description: "Luxury or five-star resort" }
+        { label: "0", description: "Budget or inexpensive stay" },
+        { label: "1", description: "Moderate or mid-range price" },
+        { label: "2", description: "Upscale or premium property" },
+        { label: "3", description: "Luxury or five-star resort" }
       ]
     }
   ]
@@ -149,8 +149,8 @@ if (status === "available" || status === "downloadable") {
   //     }
   //   },
   //   price_tier: {
-  //     id: "price_tier", label: "1", expectedScore: 1.24, confidence: 0.88,
-  //     probabilities: { "1": 0.88, "2": 0.04, "3": 0.04, "4": 0.04 }
+  //     id: "price_tier", label: "0", score: 0.24, confidence: 0.88,
+  //     probabilities: { "0": 0.88, "1": 0.04, "2": 0.04, "3": 0.04 }
   //   }
   // }
 
@@ -159,7 +159,7 @@ if (status === "available" || status === "downloadable") {
     setPetFilter(result.pet_friendly.label === "true");
   }
   if (result.property_type.confidence > 0.85) {
-    setPropertyFilter(result.property_type.label, result.price_tier.expectedScore);
+    setPropertyFilter(result.property_type.label, result.price_tier.score);
   } else {
     showSuggestedFilterChips(result.property_type.probabilities);
   }
