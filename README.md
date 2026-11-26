@@ -73,14 +73,14 @@ These user scenarios rely on three question types (`boolean`, `choice`, and `sco
 | :--- | :--- | :--- | :--- |
 | **Verification & Detection** | `boolean` | Check whether input satisfies binary policy rules, adequacy criteria, or risk checks (`"true"` / `"false"`). | Verifying a draft or AI response meets guidelines; flagging toxicity, spam, or accidental PII; checking if a policy condition is met. |
 | **Classification & Routing** | `choice` | Assign content to categorical options, route user intent to workflows or tools, or extract discrete fields. | Converting search text into predefined trip or catalog filters; routing a request to `billing` or `returns`; classifying form fields for password or address autofill. |
-| **Scoring & Ranking** | `score` | Rate degree or intensity along `L >= 2` explicit `options`, yielding a continuous score in `[0, L - 1]`. | Scoring customer tone (`calm` to `angry`) or incident severity (`cosmetic` to `critical`); rating response helpfulness (`0`–`4`); ranking candidate results. |
+| **Scoring & Ranking** | `score` | Rate degree or intensity along two or more explicit `options`, yielding a continuous score from 0 to the number of options minus 1. | Scoring customer tone (`calm` to `angry`) or incident severity (`cosmetic` to `critical`); rating response helpfulness (`0`–`4`); ranking candidate results. |
 
 ## Potential Solution
 
 We are exploring a three-step workflow on `window.DecisionModel`:
 1. **Define a schema** with one or more questions (`boolean`, `choice`, or `score`, with explicit `options` required for `choice` and `score`), check readiness with `DecisionModel.availability(schema)`, and create a session via `DecisionModel.create(schema)`.
 2. **Pass the input** (such as text or page state) to `model.decide(input)`.
-3. **Receive a structured result** keyed by question `id`, containing the winning `label`, option `probabilities` (keyed by option `label`), normalized `confidence` (`0` for uniform chance to `1` for certainty), and a continuous `score` in `[0, L - 1]` for `score` questions.
+3. **Receive a structured result** keyed by question `id`, containing the winning `label`, option `probabilities` (keyed by option `label`), normalized `confidence` (`0` for uniform chance to `1` for certainty), and a continuous `score` (from 0 to the number of options minus 1) for `score` questions.
 
 ### How this solution would solve the use cases
 
