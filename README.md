@@ -73,14 +73,14 @@ These user scenarios rely on three question types (`boolean`, `choice`, and `sco
 | :--- | :--- | :--- | :--- |
 | **Verification & Detection** | `boolean` | Check whether input satisfies binary policy rules, adequacy criteria, or risk checks (`"true"` / `"false"`). | Verifying a draft or AI response meets guidelines; flagging toxicity, spam, or accidental PII; checking if a policy condition is met. |
 | **Classification & Routing** | `choice` | Assign content to categorical options, route user intent to workflows or tools, or extract discrete fields. | Converting search text into predefined trip or catalog filters; routing a request to `billing` or `returns`; classifying form fields for password or address autofill. |
-| **Scoring & Ranking** | `score` | Rate degree or intensity along an ordered rubric to evaluate or rank items (`options` is optional and defaults to `"1"`–`"5"`). | Scoring customer tone (`calm` to `angry`) or incident severity (`cosmetic` to `critical`); rating response helpfulness (`1`–`5`); ranking candidate results. |
+| **Scoring & Ranking** | `score` | Rate degree or intensity along `L >= 2` explicit `options`, yielding a continuous score in `[0, L - 1]`. | Scoring customer tone (`calm` to `angry`) or incident severity (`cosmetic` to `critical`); rating response helpfulness (`0`–`4`); ranking candidate results. |
 
 ## Potential Solution
 
 We are exploring a three-step workflow on `window.DecisionModel`:
-1. **Define a schema** with one or more questions (`boolean`, `choice`, or `score`, with required `options` for `choice` and optional `options` for `score` defaulting to `"1"`–`"5"`), check readiness with `DecisionModel.availability(schema)`, and create a session via `DecisionModel.create(schema)`.
+1. **Define a schema** with one or more questions (`boolean`, `choice`, or `score`, with explicit `options` required for `choice` and `score`), check readiness with `DecisionModel.availability(schema)`, and create a session via `DecisionModel.create(schema)`.
 2. **Pass the input** (such as text or page state) to `model.decide(input)`.
-3. **Receive a structured result** keyed by question `id`, containing the winning `label`, option `probabilities` (keyed by option `label`), `confidence`, and `expectedScore` (populated on `score` decisions, weighted by parsed numeric option `label`s when all labels in the question are finite numbers, or `1..N` ordinal indices otherwise).
+3. **Receive a structured result** keyed by question `id`, containing the winning `label`, option `probabilities` (keyed by option `label`), normalized `confidence` (`0` for uniform chance to `1` for certainty), and a continuous `score` in `[0, L - 1]` for `score` questions.
 
 ### How this solution would solve the use cases
 
@@ -112,12 +112,12 @@ const schema = {
     {
       id: "price_tier",
       type: "score",
-      prompt: "Rate the target price tier from 1 (budget) to 4 (luxury).",
+      prompt: "Rate the target price tier from 0 (budget) to 3 (luxury).",
       options: [
-        { label: "1", description: "Budget or inexpensive stay" },
-        { label: "2", description: "Moderate or mid-range price" },
-        { label: "3", description: "Upscale or premium property" },
-        { label: "4", description: "Luxury or five-star resort" }
+        { label: "0", description: "Budget or inexpensive stay" },
+        { label: "1", description: "Moderate or mid-range price" },
+        { label: "2", description: "Upscale or premium property" },
+        { label: "3", description: "Luxury or five-star resort" }
       ]
     }
   ]
@@ -136,11 +136,11 @@ if (status === "available" || status === "downloadable") {
   // 3. Inspect the result object (keyed by question id)
   // {
   //   pet_friendly: {
-  //     id: "pet_friendly", label: "true", confidence: 0.98,
+  //     id: "pet_friendly", label: "true", confidence: 0.96,
   //     probabilities: { true: 0.98, false: 0.02 }
   //   },
   //   property_type: {
-  //     id: "property_type", label: "hotel", confidence: 0.94,
+  //     id: "property_type", label: "hotel", confidence: 0.92,
   //     probabilities: {
   //       hotel: 0.94,
   //       rental: 0.03,
@@ -149,8 +149,8 @@ if (status === "available" || status === "downloadable") {
   //     }
   //   },
   //   price_tier: {
-  //     id: "price_tier", label: "1", expectedScore: 1.24, confidence: 0.88,
-  //     probabilities: { "1": 0.88, "2": 0.04, "3": 0.04, "4": 0.04 }
+  //     id: "price_tier", label: "0", score: 0.24, confidence: 0.76,
+  //     probabilities: { "0": 0.88, "1": 0.04, "2": 0.04, "3": 0.04 }
   //   }
   // }
 
@@ -159,7 +159,7 @@ if (status === "available" || status === "downloadable") {
     setPetFilter(result.pet_friendly.label === "true");
   }
   if (result.property_type.confidence > 0.85) {
-    setPropertyFilter(result.property_type.label, result.price_tier.expectedScore);
+    setPropertyFilter(result.property_type.label, result.price_tier.score);
   } else {
     showSuggestedFilterChips(result.property_type.probabilities);
   }
@@ -189,7 +189,7 @@ const actionMatcher = await DecisionModel.create({
 });
 
 const { command } = await actionMatcher.decide("let my coworkers view this file");
-// command -> { id: "command", label: "share_link", confidence: 0.93, probabilities: { ... } }
+// command -> { id: "command", label: "share_link", confidence: 0.90, probabilities: { ... } }
 ```
 
 #### Use case 3: Real-Time Writing Feedback & Pre-Submission Checks
@@ -259,7 +259,7 @@ To make on-device decision models dependable for the web, the design targets sev
 - **Calibrated Confidence & Policy Separation:** Raw model scores are often overconfident. Providing calibrated `probabilities` and a normalized `confidence` signal lets application code decide when to act automatically versus when to ask the user.
 - **Parallel Multi-Question Evaluation:** Grouping multiple questions into one schema lets the runtime encode the input once and answer all questions in parallel, saving latency and battery.
 - **Predictable Option Behavior:**
-  - *Practical Option Limits:* Single-pass evaluation works best with a bounded number of choices per question (e.g., 2–16 options in compact models); larger catalogs can be filtered in stages.
+  - *Practical Option Limits:* Single-pass evaluation works best with a bounded number of options per question (e.g., 2–16 in compact models); maximum counts are backend-dependent, and larger catalogs can be filtered in stages.
   - *Graceful Fallbacks & Ambiguity:* Schemas can include catch-all options (like `"other"` or `"none"`). When options overlap or inputs are unclear, scores reflect that uncertainty with lower `confidence`.
   - *Order Independence:* The order in which options are listed should not bias their scores.
 - **Clear Input & Context Limits:** On-device models have finite context windows. Similar to the [Prompt API](https://github.com/webmachinelearning/prompt-api), developers need ways to check how much capacity a schema and input use, and receive clear errors rather than silent truncation when limits are exceeded.
